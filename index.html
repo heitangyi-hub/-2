@@ -1,0 +1,283 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pixel Idle RPG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Press Start 2P', monospace; /* 复古像素字体 */
+        background-color: #121212; /* 深灰背景，减少视觉疲劳 */
+        color: #e5e5e5;
+      }
+      /* 自定义滚动条样式 */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #1e1e1e;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #444;
+        border: 1px solid #121212;
+      }
+
+      /* --- 通用 UI 动画 --- */
+      
+      /* 弹窗/界面进入动画：透明度从0到1，轻微放大 */
+      @keyframes popIn { 0% { opacity: 0; transform: scale(0.95); } 100% { opacity: 1; transform: scale(1); } }
+      .animate-pop-in { animation: popIn 0.2s ease-out forwards; }
+      
+      /* 飘字动画：向上漂浮并逐渐缩小消失 */
+      @keyframes floatUp { 
+        0% { transform: translate(-50%, -50%) translateY(0) scale(1); opacity: 1; } 
+        100% { transform: translate(-50%, -50%) translateY(-60px) scale(0.8); opacity: 0; } 
+      }
+      .animate-float-up { animation: floatUp 0.8s ease-out forwards; }
+
+      /* 角色/界面震动：用于受击或错误提示 */
+      @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-5px) filter: brightness(1.5); }
+        75% { transform: translateX(5px) filter(brightness(1.5)); }
+      }
+      .animate-shake { animation: shake 0.2s ease-in-out; }
+
+      /* 屏幕震动：用于暴击或强力技能，幅度更大 */
+      @keyframes screenShake {
+        0%, 100% { transform: translate(0, 0); }
+        10% { transform: translate(-4px, -4px) rotate(-1deg); }
+        30% { transform: translate(-4px, 4px) rotate(-1deg); }
+        50% { transform: translate(-2px, 2px); }
+      }
+      .animate-screen-shake { animation: screenShake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+
+      /* 受击闪白：亮度瞬间提高 */
+      @keyframes hitFlash {
+        0% { filter: brightness(1) sepia(0); }
+        10% { filter: brightness(3) sepia(1) saturate(5) hue-rotate(-50deg); transform: scale(1.1); }
+        100% { filter: brightness(1) sepia(0); transform: scale(1); }
+      }
+      .animate-hit-flash { animation: hitFlash 0.3s ease-out; }
+
+      /* 按钮点击反馈：缩放 */
+      @keyframes clickBounce {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(0.95); }
+      }
+      .animate-click-bounce:active { animation: clickBounce 0.1s; }
+
+      /* 技能冷却完毕闪光 */
+      @keyframes skillFlash {
+        0%, 100% { filter: brightness(1); }
+        50% { filter: brightness(2) drop-shadow(0 0 10px white); }
+      }
+      .animate-skill-flash { animation: skillFlash 0.5s ease-out; }
+
+      /* =========================================
+         核心技能特效库 (CSS Composition VFX)
+         ========================================= */
+
+      /* 1. 碎星斩 (Star Shatter) - 狂战系重击 */
+      .vfx-slash-heavy-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        mix-blend-mode: screen; /* 滤色模式，增强光感 */
+        pointer-events: none;
+      }
+      /* 第一层：背景光晕 (径向渐变) */
+      .vfx-slash-heavy-glow {
+        position: absolute;
+        width: 180px;
+        height: 180px;
+        background: radial-gradient(circle, rgba(255,100,0,0.8) 0%, rgba(255,0,0,0) 70%);
+        filter: blur(15px);
+        animation: vfx-fade-out 0.4s ease-out forwards;
+      }
+      /* 第二层：斩击刀光 (锥形渐变模拟拖尾) */
+      .vfx-slash-heavy-blade {
+        position: absolute;
+        width: 250px;
+        height: 250px;
+        border-radius: 50%;
+        background: conic-gradient(from 140deg, transparent 0deg, transparent 240deg, #ffcc00 300deg, #ffffff 360deg);
+        mask-image: radial-gradient(transparent 55%, black 60%);
+        -webkit-mask-image: radial-gradient(transparent 55%, black 60%);
+        animation: vfx-slash-rotate 0.2s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
+        filter: drop-shadow(0 0 10px #ffaa00);
+      }
+      /* 第三层：核心高亮线条 */
+      .vfx-slash-heavy-core {
+        position: absolute;
+        width: 300px;
+        height: 4px;
+        background: #fff;
+        transform: rotate(-45deg) scaleX(0);
+        box-shadow: 0 0 20px #fff, 0 0 40px #ffaa00;
+        animation: vfx-slash-core 0.15s cubic-bezier(0, 0.5, 0.5, 1) forwards;
+      }
+
+      /* 2. 剑刃风暴 (Whirlwind) - 狂战系AOE */
+      .vfx-whirlwind-ring {
+        position: absolute;
+        border-radius: 50%;
+        border: 4px double #ff5500;
+        border-top-color: white;
+        border-bottom-color: transparent;
+        box-shadow: 0 0 15px #ff0000;
+        animation: vfx-spin 0.5s linear infinite;
+        opacity: 0.8;
+      }
+
+      /* 3. 崩山裂地 (Earth Shatter) - 地面裂隙 */
+      .vfx-earth-crack {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 100%;
+        height: 200px;
+        background: linear-gradient(to top, rgba(255,50,0,0.8), transparent);
+        /* 多边形裁剪模拟裂缝形状 */
+        clip-path: polygon(45% 100%, 55% 100%, 52% 60%, 60% 40%, 40% 40%, 48% 60%);
+        transform: translateX(-50%) scaleY(0);
+        animation: vfx-crack-open 0.6s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+        filter: blur(2px) contrast(2);
+      }
+      .vfx-earth-debris {
+        position: absolute;
+        width: 10px;
+        height: 10px;
+        background: #5d4037;
+        animation: vfx-debris-fly 0.5s ease-out forwards;
+      }
+
+      /* 4. 神迹·救赎 (Holy Nova) - 神圣系大招 */
+      .vfx-holy-nova-ring {
+        position: absolute;
+        border-radius: 50%;
+        border: 20px solid rgba(255,255,200,0.8);
+        box-shadow: 0 0 50px #ffd700, inset 0 0 50px #ffd700;
+        animation: vfx-nova-expand 0.8s cubic-bezier(0.1, 0.8, 0.2, 1) forwards;
+        mix-blend-mode: screen;
+      }
+      .vfx-holy-ray {
+        position: absolute;
+        width: 4px;
+        height: 1000px;
+        background: white;
+        top: 50%; left: 50%;
+        transform-origin: top;
+        animation: vfx-ray-spin 2s linear infinite;
+        opacity: 0.5;
+      }
+
+      /* 5. 虚空领域 (Void Zone) - 秘术系控制 */
+      .vfx-void-hole {
+        position: absolute;
+        width: 400px;
+        height: 400px;
+        background: black;
+        border-radius: 50%;
+        box-shadow: 0 0 20px #4b0082, inset 0 0 40px #800080;
+        animation: vfx-void-pulse 1.5s ease-in-out forwards;
+        mix-blend-mode: exclusion; /* 差值模式，制造反色黑洞效果 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .vfx-void-horizon {
+        position: absolute;
+        width: 420px;
+        height: 420px;
+        border: 2px solid white;
+        border-radius: 50%;
+        animation: vfx-spin-reverse 3s linear infinite;
+        opacity: 0.5;
+      }
+
+      /* 6. 雷暴 (Thunder Storm) - 秘术系单体 */
+      .vfx-lightning-bolt {
+        position: absolute;
+        top: -100px;
+        width: 10px;
+        height: 120%;
+        background: white;
+        box-shadow: 0 0 20px #00e5ff, 0 0 50px #00e5ff;
+        transform: skewX(-10deg);
+        animation: vfx-lightning-flash 0.3s steps(3) forwards;
+        mix-blend-mode: screen;
+      }
+
+      /* --- 特效关键帧定义 --- */
+      
+      /* 淡出并放大 */
+      @keyframes vfx-fade-out { 0% { opacity: 1; transform: scale(0.5); } 100% { opacity: 0; transform: scale(1.2); } }
+      /* 斩击旋转 */
+      @keyframes vfx-slash-rotate { 0% { transform: rotate(-45deg) scale(0.5); opacity: 0; } 20% { opacity: 1; } 100% { transform: rotate(135deg) scale(1.5); opacity: 0; } }
+      /* 核心光刃拉伸 */
+      @keyframes vfx-slash-core { 0% { transform: translate(-50%, -50%) rotate(-45deg) scaleX(0); opacity: 0; } 50% { opacity: 1; transform: translate(-50%, -50%) rotate(-45deg) scaleX(1.5); } 100% { transform: translate(-50%, -50%) rotate(-45deg) scaleX(1); opacity: 0; } }
+      
+      /* 旋转 */
+      @keyframes vfx-spin { 0% { transform: rotate(0deg) scale(1); } 100% { transform: rotate(360deg) scale(1.5); } }
+      @keyframes vfx-spin-reverse { 0% { transform: rotate(360deg); } 100% { transform: rotate(0deg); } }
+      
+      /* 地裂展开 */
+      @keyframes vfx-crack-open { 0% { transform: translateX(-50%) scaleY(0); opacity: 0; } 20% { opacity: 1; transform: translateX(-50%) scaleY(1); } 80% { opacity: 1; } 100% { transform: translateX(-50%) scaleY(1.2); opacity: 0; } }
+      /* 碎石飞溅 */
+      @keyframes vfx-debris-fly { 0% { transform: translate(0,0) scale(1); } 100% { transform: translate(var(--tx), var(--ty)) scale(0); } }
+
+      /* 光环扩散 */
+      @keyframes vfx-nova-expand { 0% { width: 0; height: 0; opacity: 1; border-width: 50px; } 100% { width: 800px; height: 800px; opacity: 0; border-width: 0; } }
+      /* 光束旋转 */
+      @keyframes vfx-ray-spin { 0% { transform: translate(-50%, 0) rotate(0deg); } 100% { transform: translate(-50%, 0) rotate(360deg); } }
+
+      /* 黑洞脉冲 */
+      @keyframes vfx-void-pulse { 0% { transform: scale(0); opacity: 0; } 20% { transform: scale(1); opacity: 1; } 80% { transform: scale(1.1); opacity: 1; } 100% { transform: scale(0); opacity: 0; } }
+
+      /* 闪电闪烁 */
+      @keyframes vfx-lightning-flash { 0% { opacity: 0; width: 2px; } 20% { opacity: 1; width: 15px; } 40% { opacity: 0; } 60% { opacity: 1; width: 8px; } 100% { opacity: 0; } }
+
+      /* 普通物理受击 */
+      @keyframes hitImpact {
+        0% { transform: scale(0.5); opacity: 1; }
+        100% { transform: scale(1.5); opacity: 0; }
+      }
+      .animate-hit-impact { animation: hitImpact 0.2s ease-out forwards; }
+      
+      /* 角色冲刺动作 */
+      @keyframes lunge { 0% { transform: translate(0, 0); } 20% { transform: translate(40px, -20px); } 100% { transform: translate(0, 0); } }
+      .animate-lunge { animation: lunge 0.2s ease-out; }
+      
+      /* 怪物冲刺动作 */
+      @keyframes monsterLunge { 0% { transform: translate(-50%, -50%); } 50% { transform: translate(-50%, -30%); } 100% { transform: translate(-50%, -50%); } }
+      .animate-monster-lunge { animation: monsterLunge 0.3s ease-in-out; }
+      /* Boss 砸地动作 */
+      @keyframes bossSlam { 0% { transform: translate(-50%, -50%) scale(1); } 40% { transform: translate(-50%, -80%) scale(1.2); } 100% { transform: translate(-50%, -50%) scale(1); } }
+      .animate-boss-slam { animation: bossSlam 0.6s cubic-bezier(0.36, 0, 0.66, -0.56); }
+
+      /* 文字漂浮 */
+      @keyframes textFloat { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
+      .animate-text-float { animation: textFloat 0.8s ease-out forwards; }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
